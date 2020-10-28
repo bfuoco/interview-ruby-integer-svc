@@ -1,0 +1,51 @@
+version: '3'
+services:
+  app:
+    build: ./app
+    restart: unless-stopped
+    volumes:
+      - ./app:/working
+    ports:
+      - 9292:9292
+    healthcheck:
+      test: curl http://localhost:9292/ok || exit 1
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      db:
+        condition: service_healthy
+    environment: 
+      DB_HOST: db
+      DB_USERNAME: postgres
+      DB_PASSWORD: password
+      DB_NAME: increment-integer-svc
+            
+  www:
+    image: nginx
+    restart: unless-stopped
+    volumes:
+      - ./www:/usr/share/nginx/html
+    ports:
+      - 8080:80
+    depends_on:
+      app:
+        condition: service_healthy
+
+  db:
+    image: postgres
+    restart: unless-stopped
+    volumes:
+      - ./tmp/db:/var/lib/postgresql/data
+    ports:
+        - 5432:5432
+    healthcheck:
+      test: pg_isready -U postgres || exit 1
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    environment:
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: increment-integer-svc

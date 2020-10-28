@@ -1,0 +1,36 @@
+#require 'standalone_migrations'
+#StandaloneMigrations::Tasks.load_tasks
+
+require "active_record"
+require "bundler/setup"
+require "pg"
+require "rubygems"
+
+# simple migration setup using activerecord without rails.
+#
+# usage:
+#   rake db:migrate
+#   bundle exec rake db:migrate
+#
+# migrations are run automatically on app startup. this is not a production-ready solution. a 
+# discussion of alternatives is in the readme.md file.
+#
+namespace :db do
+  desc "Run the database migrations."
+  task :migrate do
+    ActiveRecord::Base.establish_connection(
+      adapter: "postgresql",
+      host: ENV["DB_HOST"],
+      username: ENV["DB_USERNAME"],
+      password: ENV["DB_PASSWORD"],
+      database: ENV["DB_NAME"]
+    )
+
+    schema_migration = ActiveRecord::SchemaMigration.tap do |sm|
+      sm.create_table
+    end
+
+    context = ActiveRecord::MigrationContext.new("migrations", schema_migration)
+    context.migrate
+  end
+end

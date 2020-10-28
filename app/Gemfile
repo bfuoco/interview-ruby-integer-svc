@@ -1,0 +1,9 @@
+source "https://rubygems.org"
+
+gem "rack"
+gem "roda"
+gem "auto_reloader"
+gem "activerecord"
+gem "pg"
+gem "rake"
+gem "bcrypt"

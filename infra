@@ -1,0 +1,71 @@
+#!/bin/bash
+#
+# infra
+#
+# A small wrapper script around terraform that stands up and destroys infrastructure.
+#
+# Environments are defined by creating a tfvars file in the terraform/env/ folder. See the 
+# "sample" file in this folder for an example.
+#
+# $1 - The action that you want to perform, either "create" or "destroy".
+# $2 - (optional) The environment that you want to perform the action in. This parameter must match
+#      the name of a file in the terraform/env directory. Defaults to "dev".
+#
+# Examples
+#
+# Create infrastructure in the development environment:
+#
+#   infra create
+#
+#   (maps to terraform apply -var-file=./terraform/env/dev.tfvars ./terraform)
+#
+#
+# Create infrastructure in the production environment:
+#
+#   infra create prod
+#
+#   (maps to terraform apply -var-file=./terraform/env/prod.tfvars ./terraform)
+#
+#
+# Destroy infrastructure in the development environment:
+#
+#   infra destroy dev
+#
+#   (maps to terraform destroy -var-file=./terraform/env/dev.tfavrs ./terraform)
+#
+die() {
+  echo >&2 "infra: $@"
+  echo >&2 "usage: <create|destroy> <environment>"
+
+  exit 1
+}
+
+create() {
+    terraform apply -var-file="$1" ./terraform
+}
+
+destroy() {
+    terraform destroy -var-file="$1" ./terraform
+}
+
+[ "$#" -eq 1 ] || [ "$#" -eq 2 ] || die "incorrect number of arguments provided"
+
+if ! [[ "$1" =~ ^(create|destroy)$ ]]; then die "action must be either \"create\" or \"destroy\"" ; fi
+
+if ! [ -z "$2" ]; then 
+  VAR_FILE=./terraform/env/"$2".tfvars
+else
+  VAR_FILE=./terraform/env/dev.tfvars
+fi;
+
+if ! [[ -f $VAR_FILE ]]; then die "expected file $VAR_FILE to exist"; fi
+
+case "$1" in
+  create)
+    create $VAR_FILE
+    ;;
+
+  destroy)
+    destroy $VAR_FILE
+    ;;
+esac

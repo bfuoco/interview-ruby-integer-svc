@@ -1,0 +1,137 @@
+#!/bin/bash
+#
+# web
+#
+# A script that handles building and deploying front-end web artifacts.
+#
+# The "build" action zips the www folder and uploads it to gcloud. The "deploy" action unzips the
+# artifact to the storage bucket. The "list" action lists the available versions that can be
+# deployed.
+#
+# If multiple versions are deployed to a bucket, the most recent version is used. 
+#
+# $1 - The action that you want to perform, either "build", "deploy" or "list".
+# $2 - (optional) The version to build or deploy, must be valid semver. Defaults to the version in
+#      the version file if not specified.
+#
+# Examples
+#
+die() {
+  echo >&2 "web: $@"
+  echo >&2 "usage: <build|list|deploy> [version]"
+
+  exit 1
+}
+
+build() {
+  # GZips the contents of the www folder and uploads the zip to the artifacts bucket.
+  #
+  # $1 - The semantic version of the artifact to build, ie: 1.0.0.
+  #
+  if ! [ -d .working ]; then mkdir .working; fi
+
+  cp -r www .working
+  cp www/src/config/dev.js .working/www/src/Config.js
+
+  tar -czf .working/www-"$1".tar.gz -C .working/www .
+  gsutil cp .working/www-"$1".tar.gz gs://increment-integer-www-artifacts
+
+#  rm -r .working
+}
+
+list() {
+  # Lists the available versions for deployment.
+  #
+  # If your bucket has the following files:
+  #   gs://increment-integer-www-artifacts/www-1.0.1.tar.gz
+  #   gs://increment-integer-www-artifacts/www-2.2.2.tar.gz
+  #
+  # This function will print out:
+  #   1.0.1
+  #   2.2.2
+  #
+  local gcpfile version i
+
+  echo "available versions to deploy:"
+
+  i=0
+  while read -r gcpfile
+  do
+    if [[ "$gcpfile" =~ ^gs://increment-integer-www-artifacts/www-([0-9]+\.[0-9]+\.[0-9]).tar.gz$ ]]; then
+
+      version="${BASH_REMATCH[1]}"
+      echo "  $version"
+
+      let "i=i+1"
+    fi;
+  done < <(gsutil ls gs://increment-integer-www-artifacts)
+
+  if [ "$i" -eq 0 ]; then echo "  none"; fi
+}
+
+deploy() {
+  # Deploys a specific version to the static website bucket.
+  #
+  # This downloads the artifact gzip, decompresses it, and uploads each file individually to the
+  # bucket. In a production app, this would be better accomplished by Data Flow, which can do this
+  # operation without needing to download the arfact.
+  #
+  # $1 - The semantic version of the artifact to deploy, ie: 1.0.0. This artifact must exist in the
+  #      www artifacts storage bucket.
+  #
+  # If your bucket has the following files:
+  #   gs://increment-integer-www-artifacts/www-1.0.1.tar.gz
+  #   gs://increment-integer-www-artifacts/www-2.2.2.tar.gz
+  #
+  # This function will print out:
+  #   1.0.1
+  #   2.2.2
+  #
+  local gcpfile versions
+
+  while read -r gcpfile
+  do
+    if [[ "$gcpfile" =~ ^gs://increment-integer-www-artifacts/www-([0-9]+\.[0-9]+\.[0-9]).tar.gz$ ]]; then
+
+      versions="$versions ${BASH_REMATCH[1]}"
+    fi;
+  done < <(gsutil ls gs://increment-integer-www-artifacts)
+
+  if ! [[ "$versions" == *"$1"* ]]; then die "no artifact available for version $1, see available artifacts with \"web list\""; fi
+
+  mkdir -p .working/"$1"
+  gsutil cp gs://increment-integer-www-artifacts/www-"$1".tar.gz .working/www-"$1".tar.gz
+  tar -xzf .working/www-"$1".tar.gz -C .working/"$1"
+
+  gsutil rm gs://increment-integer-www/**
+  gsutil cp -r .working/"$1"/** gs://increment-integer-www
+
+  rm -r .working
+}
+
+
+[ "$#" -eq 1 ] || [ "$#" -eq 2 ] || die "incorrect number of arguments provided"
+
+if ! [[ "$1" =~ ^(build|list|deploy)$ ]]; then die "action must be either \"build\", \"list\" or \"deploy\"" ; fi
+
+if ! [ -z "$2" ]; then
+  VERSION=$2
+else
+  VERSION=$(<.version)
+fi;
+
+if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then die "invalid semver: $VERSION"; fi
+
+case "$1" in
+  build)
+    build $VERSION
+    ;;
+
+  list)
+    list
+    ;;
+
+  deploy)
+    deploy $VERSION
+    ;;
+esac
